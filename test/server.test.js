@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { saveReport } from '../src/report.js';
 import { Report } from '../src/schema.js';
@@ -73,6 +74,19 @@ test('lists branches for a repository', async () => {
 
 const postReview = (body) => api('/api/reviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const request = (overrides = {}) => ({ repoPath: repo, source: 'feature/coupons', dest: 'main', changeType: 'feature', description: 'Added coupons', ...overrides });
+
+test('browses folders and finds repositories', async () => {
+  const parent = path.dirname(repo);
+  const listing = await (await api(`/api/folders?path=${encodeURIComponent(parent)}`)).json();
+  assert.equal(listing.path, parent);
+  assert.ok(listing.entries.some((e) => e.path === repo && e.isRepo));
+  const scan = await (await api(`/api/folders/repos?path=${encodeURIComponent(repo)}`)).json();
+  assert.deepEqual(scan.repos.map((r) => r.path), [repo]);
+  assert.equal((await api('/api/folders?path=%2Fno%2Fsuch%2Ffolder')).status, 404);
+  assert.equal((await fetch(`${base}/api/folders?path=%2F`)).status, 401, 'folder listing needs the token too');
+  const status = await (await api('/api/status')).json();
+  assert.equal(status.nativeFolderPicker, process.platform === 'darwin');
+});
 
 test('starting a review when Claude Code is logged out explains what to do', async () => {
   fake.setLoggedIn(false);

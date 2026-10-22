@@ -353,6 +353,69 @@ td.row-actions .btn { margin-left: 4px; }
 .empty { color: var(--muted); text-align: center; padding: 28px 0 12px; margin: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* Repository picker */
+.btn.primary-ghost { color: var(--accent); border-color: var(--accent); }
+.btn.primary-ghost:hover { background: var(--accent-soft); }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chips .label { color: var(--muted); font-size: 12.5px; margin-right: 2px; }
+.chip {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+
+.folder-body { display: grid; gap: 10px; padding-bottom: 8px; }
+.folder-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
+.folder-nav { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.crumbs { display: flex; align-items: center; gap: 2px; font-family: var(--mono); font-size: 12.5px; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+.crumbs button, .crumbs .sep { flex: none; }
+.crumbs button { font: inherit; background: none; border: 0; padding: 2px 4px; border-radius: 4px; color: var(--accent); cursor: pointer; }
+.crumbs button:hover { background: var(--accent-soft); }
+.crumbs button[aria-current] { color: var(--text); font-weight: 600; cursor: default; background: none; }
+.crumbs .sep { color: var(--muted); }
+.folder-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.folder-tools input[type="search"] { flex: 1 1 220px; width: auto; }
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: min(46vh, 420px);
+  overflow: auto;
+}
+.folder-list li { display: flex; align-items: center; gap: 10px; padding: 0 8px 0 0; border-bottom: 1px solid var(--border); }
+.folder-list li:last-child { border-bottom: 0; }
+.folder-list li.message { padding: 14px; color: var(--muted); justify-content: center; }
+.folder-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.folder-open:hover { background: var(--surface-2); }
+.folder-open .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-icon { flex: none; width: 18px; height: 14px; border-radius: 2px 3px 3px 3px; background: var(--border-strong); position: relative; }
+.folder-icon::before { content: ""; position: absolute; left: 0; top: -3px; width: 8px; height: 4px; border-radius: 2px 2px 0 0; background: inherit; }
+.folder-icon.repo { background: var(--accent); }
+.badge-git { flex: none; font-size: 11px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 5px; }
+.folder-foot { justify-content: space-between; align-items: center; }
+.folder-foot .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
 /* Dialogs */
 .dialog {
   border: 1px solid var(--border);
@@ -405,4 +468,6 @@ pre.code {
   .filters, .filters input, .filters select { width: 100%; }
   .row { flex-direction: column; }
   .topbar .pill { display: none; }
+  .folder-foot { flex-direction: column; align-items: stretch; gap: 8px; }
+  .folder-foot .hint { white-space: normal; }
 }
