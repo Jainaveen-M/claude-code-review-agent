@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { BrdError } from '../brd.js';
 import { claudeStatus } from '../agent/claude-cli.js';
 import { VERSION, readConfig, writeConfig } from '../config.js';
+import { FolderError, findRepos, listFolder, nativePickerAvailable, pickFolderNative } from '../folders.js';
 import { GitError, fetchRemotes, listBranches, repoRoot } from '../git.js';
 import { deleteEntry, getEntry, listEntries, readReport, recentRepos } from '../history.js';
 import { ReportError } from '../report.js';
@@ -46,6 +47,7 @@ async function status(ctx, req, res, url) {
     claude: await claudeStatus({ fresh: url.searchParams.get('fresh') === '1' }),
     config: readConfig(),
     launchRepo: ctx.launchRepo,
+    nativeFolderPicker: nativePickerAvailable(),
     activeRun: active ? active.summary() : null,
   });
 }
@@ -58,6 +60,29 @@ async function branches(ctx, req, res, url) {
   const repo = await repoRoot(url.searchParams.get('repo') ?? '');
   const fetched = url.searchParams.get('fetch') === '1' ? await fetchRemotes(repo) : null;
   sendJson(res, 200, { repoPath: repo, repo: path.basename(repo), ...(await listBranches(repo)), warning: fetched?.warning ?? null });
+}
+
+/** Run a folders.js call, turning its errors into HTTP errors. */
+async function folderCall(fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof FolderError) throw new HttpError(error.status, error.message);
+    throw error;
+  }
+}
+
+async function folders(ctx, req, res, url) {
+  const dir = url.searchParams.get('path') || ctx.launchRepo || '';
+  sendJson(res, 200, await folderCall(() => listFolder(dir, { showHidden: url.searchParams.get('hidden') === '1' })));
+}
+
+async function folderRepos(ctx, req, res, url) {
+  sendJson(res, 200, await folderCall(() => findRepos(url.searchParams.get('path') || '')));
+}
+
+async function pickFolder(ctx, req, res) {
+  sendJson(res, 200, await folderCall(() => pickFolderNative()));
 }
 
 async function getConfig(ctx, req, res) {
@@ -153,6 +178,9 @@ export const routes = [
   ['GET', /^\/api\/status$/, status],
   ['GET', /^\/api\/repos\/recent$/, recent],
   ['GET', /^\/api\/branches$/, branches],
+  ['GET', /^\/api\/folders$/, folders],
+  ['GET', /^\/api\/folders\/repos$/, folderRepos],
+  ['POST', /^\/api\/folders\/pick$/, pickFolder],
   ['GET', /^\/api\/config$/, getConfig],
   ['PUT', /^\/api\/config$/, putConfig],
   ['POST', /^\/api\/reviews$/, createReview],

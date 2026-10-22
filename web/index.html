@@ -35,8 +35,10 @@
           <div class="row">
             <input id="repo" list="recent-repos" placeholder="/absolute/path/to/your/repo" autocomplete="off" spellcheck="false" required>
             <datalist id="recent-repos"></datalist>
+            <button type="button" id="browse-btn" class="btn primary-ghost">Browse…</button>
             <button type="button" id="load-branches" class="btn">Load branches</button>
           </div>
+          <div id="recent-chips" class="chips" hidden></div>
           <p class="hint" id="repo-hint"></p>
         </div>
 
@@ -141,6 +143,31 @@
       <p id="h-empty" class="empty" hidden>No reviews yet. Run one above, or use <code>/branch-review</code> in Claude Code.</p>
     </section>
   </main>
+
+  <dialog id="folder-dialog" class="dialog wide" aria-labelledby="folder-title">
+    <form method="dialog" class="dialog-head">
+      <h3 id="folder-title">Choose a project folder</h3>
+      <button class="btn ghost" value="close">Close</button>
+    </form>
+    <div class="dialog-body folder-body">
+      <div class="folder-shortcuts" id="folder-shortcuts"></div>
+      <div class="folder-nav">
+        <button type="button" class="btn small" id="folder-up" title="Parent folder">↑ Up</button>
+        <nav class="crumbs" id="folder-crumbs" aria-label="Current folder"></nav>
+      </div>
+      <div class="folder-tools">
+        <input type="search" id="folder-filter" placeholder="Filter folders" aria-label="Filter folders">
+        <label class="check"><input type="checkbox" id="folder-hidden"> Show hidden</label>
+        <button type="button" class="btn small" id="folder-scan">Find git repos here</button>
+      </div>
+      <p class="hint" id="folder-note"></p>
+      <ul class="folder-list" id="folder-list" aria-live="polite"></ul>
+    </div>
+    <div class="dialog-foot folder-foot">
+      <span class="hint" id="folder-current"></span>
+      <button type="button" class="btn primary" id="folder-select" disabled>Use this folder</button>
+    </div>
+  </dialog>
 
   <dialog id="detail-dialog" class="dialog wide">
     <form method="dialog" class="dialog-head">

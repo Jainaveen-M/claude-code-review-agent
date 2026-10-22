@@ -112,8 +112,179 @@ async function loadStatus() {
 
 async function loadRecentRepos() {
   const { repos } = await api('/api/repos/recent');
+  state.recentRepos = repos;
   $('#recent-repos').replaceChildren(...repos.map((r) => h('option', { value: r.repoPath }, r.repo)));
+  renderRecentChips();
   return repos;
+}
+
+function chooseRepo(repoPath) {
+  $('#repo').value = repoPath;
+  renderRecentChips();
+  return loadBranches();
+}
+
+/** One-click chips for recently reviewed repos (other than the one selected). */
+function renderRecentChips() {
+  const current = $('#repo').value.trim();
+  const repos = (state.recentRepos ?? []).filter((r) => r.repoPath !== current).slice(0, 6);
+  $('#recent-chips').replaceChildren(
+    h('span', { class: 'label' }, 'Recent:'),
+    ...repos.map((r) => h('button', { type: 'button', class: 'chip', title: r.repoPath, onclick: () => chooseRepo(r.repoPath) }, r.repo)),
+  );
+  $('#recent-chips').hidden = repos.length === 0;
+}
+
+// ---------- Folder browser ----------
+
+const folderState = { listing: null, scan: null, loading: false };
+const LAST_FOLDER_KEY = 'cra-last-folder';
+
+const parentDir = (p) => p.replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
+
+function rememberFolder(path) {
+  try { localStorage.setItem(LAST_FOLDER_KEY, path); } catch { /* storage blocked */ }
+}
+
+function lastFolder() {
+  try { return localStorage.getItem(LAST_FOLDER_KEY); } catch { return null; }
+}
+
+function folderMessage(text) {
+  $('#folder-list').replaceChildren(h('li', { class: 'message' }, text));
+}
+
+function selectFolder(path) {
+  $('#folder-dialog').close();
+  chooseRepo(path);
+}
+
+function folderRow(entry, { label = entry.name } = {}) {
+  const icon = h('span', { class: `folder-icon${entry.isRepo ? ' repo' : ''}`, 'aria-hidden': 'true' });
+  if (!entry.isRepo) {
+    return h('li', {}, h('button', { type: 'button', class: 'folder-open', title: entry.path, onclick: () => openFolder(entry.path) }, icon, h('span', { class: 'name' }, label)));
+  }
+  return h('li', {},
+    h('button', { type: 'button', class: 'folder-open', title: `Select ${entry.path}`, onclick: () => selectFolder(entry.path) },
+      icon, h('span', { class: 'name' }, label), h('span', { class: 'badge-git' }, 'git')),
+    h('button', { type: 'button', class: 'btn small ghost', title: 'Open this folder', onclick: () => openFolder(entry.path) }, 'Open'),
+    h('button', { type: 'button', class: 'btn small', onclick: () => selectFolder(entry.path) }, 'Select'));
+}
+
+function renderFolderList() {
+  const needle = $('#folder-filter').value.trim().toLowerCase();
+  const { listing, scan } = folderState;
+  const items = scan ? scan.repos : listing?.entries ?? [];
+  const visible = items.filter((e) => !needle || e.name.toLowerCase().includes(needle));
+  if (visible.length === 0) {
+    folderMessage(needle ? 'No folders match the filter.' : scan ? 'No git repositories found here.' : 'This folder has no subfolders.');
+    return;
+  }
+  $('#folder-list').replaceChildren(...visible.map((entry) => folderRow(entry)));
+}
+
+function renderCrumbs(path) {
+  const parts = path.split('/').filter(Boolean);
+  const crumbs = [h('button', { type: 'button', onclick: () => openFolder('/'), 'aria-current': parts.length === 0 ? 'location' : null }, '/')];
+  parts.forEach((part, i) => {
+    const target = `/${parts.slice(0, i + 1).join('/')}`;
+    const last = i === parts.length - 1;
+    if (i > 0) crumbs.push(h('span', { class: 'sep' }, '/'));
+    crumbs.push(h('button', { type: 'button', 'aria-current': last ? 'location' : null, onclick: last ? null : () => openFolder(target) }, part));
+  });
+  const nav = $('#folder-crumbs');
+  nav.replaceChildren(...crumbs);
+  nav.scrollLeft = nav.scrollWidth;
+}
+
+function renderFolderFooter() {
+  const { listing } = folderState;
+  const select = $('#folder-select');
+  if (listing?.repoRoot) {
+    const inside = listing.repoRoot !== listing.path;
+    $('#folder-current').textContent = inside ? `Inside the git repository ${listing.repoRoot}` : `Git repository: ${listing.path}`;
+    select.textContent = inside ? 'Use this repository' : 'Use this folder';
+    select.disabled = false;
+  } else {
+    $('#folder-current').textContent = 'Not a git repository. Choose a folder marked git.';
+    select.textContent = 'Use this folder';
+    select.disabled = true;
+  }
+}
+
+async function openFolder(path) {
+  folderState.scan = null;
+  $('#folder-note').textContent = '';
+  folderMessage('Loading...');
+  try {
+    const params = new URLSearchParams({ path, ...($('#folder-hidden').checked ? { hidden: '1' } : {}) });
+    const listing = await api(`/api/folders?${params}`);
+    folderState.listing = listing;
+    rememberFolder(listing.path);
+    $('#folder-filter').value = '';
+    renderCrumbs(listing.path);
+    $('#folder-up').disabled = !listing.parent;
+    const repos = listing.entries.filter((e) => e.isRepo).length;
+    const count = listing.entries.length;
+    $('#folder-note').textContent = `${count} ${count === 1 ? 'folder' : 'folders'}${repos ? `, ${repos} git ${repos === 1 ? 'repository' : 'repositories'}` : ''}${listing.truncated ? ' (showing the first 1000)' : ''}`;
+    renderFolderList();
+    renderFolderFooter();
+  } catch (error) {
+    folderMessage(error.message);
+  }
+}
+
+async function scanForRepos() {
+  const { listing } = folderState;
+  if (!listing) return;
+  const button = $('#folder-scan');
+  button.disabled = true;
+  folderMessage('Looking for git repositories...');
+  try {
+    const scan = await api(`/api/folders/repos?${new URLSearchParams({ path: listing.path })}`);
+    folderState.scan = scan;
+    $('#folder-filter').value = '';
+    $('#folder-note').replaceChildren(
+      `${scan.repos.length} git ${scan.repos.length === 1 ? 'repository' : 'repositories'} found up to 3 levels down${scan.complete ? '' : ' (search stopped early)'}. `,
+      h('button', { type: 'button', class: 'link', onclick: () => openFolder(listing.path) }, 'Back to folders'),
+    );
+    renderFolderList();
+  } catch (error) {
+    folderMessage(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function pickWithFinder() {
+  try {
+    const result = await api('/api/folders/pick', { method: 'POST', body: {} });
+    if (result.path) selectFolder(result.path);
+  } catch (error) {
+    $('#folder-note').textContent = error.message;
+  }
+}
+
+function renderFolderShortcuts() {
+  const shortcuts = [h('button', { type: 'button', class: 'chip', onclick: () => openFolder('~') }, 'Home')];
+  if (state.status?.launchRepo) {
+    shortcuts.push(h('button', { type: 'button', class: 'chip', title: state.status.launchRepo, onclick: () => openFolder(parentDir(state.status.launchRepo)) }, 'Launch folder'));
+  }
+  for (const r of (state.recentRepos ?? []).slice(0, 5)) {
+    shortcuts.push(h('button', { type: 'button', class: 'chip', title: `Select ${r.repoPath}`, onclick: () => selectFolder(r.repoPath) }, r.repo));
+  }
+  if (state.status?.nativeFolderPicker) {
+    shortcuts.push(h('button', { type: 'button', class: 'chip', title: 'Open the macOS folder chooser', onclick: pickWithFinder }, 'Choose in Finder…'));
+  }
+  $('#folder-shortcuts').replaceChildren(...shortcuts);
+}
+
+function openFolderDialog() {
+  const current = $('#repo').value.trim();
+  const start = current.startsWith('/') ? parentDir(current) : lastFolder() ?? (state.status?.launchRepo ? parentDir(state.status.launchRepo) : '~');
+  renderFolderShortcuts();
+  $('#folder-dialog').showModal();
+  openFolder(start);
 }
 
 function fillBranchSelect(select, branches, selected) {
@@ -142,6 +313,7 @@ async function loadBranches({ fetch = false } = {}) {
     fillBranchSelect($('#source'), data.branches, data.current && data.current !== data.defaultDest ? data.current : otherThanDest);
     fillBranchSelect($('#dest'), data.branches, data.defaultDest);
     $('#refresh-branches').disabled = false;
+    renderRecentChips();
     hint.textContent = `${data.repo}: ${data.branches.length} branches${data.current ? `, on ${data.current}` : ''}${data.warning ? `. ${data.warning}` : ''}`;
   } catch (error) {
     hint.textContent = error.message;
@@ -469,6 +641,12 @@ async function init() {
 
   $('#review-form').addEventListener('submit', submitReview);
   $('#load-branches').addEventListener('click', () => loadBranches());
+  $('#browse-btn').addEventListener('click', openFolderDialog);
+  $('#folder-up').addEventListener('click', () => folderState.listing?.parent && openFolder(folderState.listing.parent));
+  $('#folder-filter').addEventListener('input', renderFolderList);
+  $('#folder-hidden').addEventListener('change', () => folderState.listing && openFolder(folderState.listing.path));
+  $('#folder-scan').addEventListener('click', scanForRepos);
+  $('#folder-select').addEventListener('click', () => folderState.listing?.repoRoot && selectFolder(folderState.listing.repoRoot));
   $('#refresh-branches').addEventListener('click', () => loadBranches({ fetch: true }));
   $('#repo').addEventListener('change', () => loadBranches());
   $('#repo').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadBranches(); } });
@@ -494,6 +672,7 @@ async function init() {
     const startRepo = state.status.launchRepo ?? repos[0]?.repoPath;
     if (startRepo) {
       $('#repo').value = startRepo;
+      renderRecentChips();
       await loadBranches();
     }
     const active = state.status.activeRun;

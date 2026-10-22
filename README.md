@@ -32,7 +32,7 @@ code-review-agent ui
 
 This opens `http://127.0.0.1:4477`. Then:
 
-1. Choose the repository and the source and destination branches.
+1. Choose the repository: click **Browse…** to pick a folder (git repos are marked, and **Find git repos here** lists every repo a few levels down), click a recent repo, or type the path. On macOS you can also use the Finder picker. Then pick the source and destination branches.
 2. Choose the type of change and describe what you fixed or changed.
 3. For a feature, optionally upload the BRD (PDF, Word, Markdown or text) or paste it.
 4. Click **Run review**. Progress streams live, and the PDF appears under **History** when it's done.
@@ -86,6 +86,7 @@ Set `CODE_REVIEW_AGENT_HOME` to use another folder, and `CODE_REVIEW_AGENT_CLAUD
 
 - The PDF uses the standard PDF fonts, which cover Latin scripts only. Common symbols such as → and ≥ are converted to ASCII, and other characters (e.g. emoji, CJK) appear as `?`.
 - One review runs at a time per UI server.
+- The folder browser shows macOS/Linux-style paths. On Windows, type or paste the repository path instead.
 
 ## Development
 
