@@ -1,0 +1,114 @@
+{
+  "verdict": "REQUEST_CHANGES",
+  "confidence": "HIGH",
+  "summary": "Adds a coupon field to checkout and applies percentage discounts server-side. The happy path works, but the coupon lookup builds SQL by string concatenation (injectable), expired coupons are still accepted because the date check uses the wrong comparison, and the BRD's per-customer usage limit is not implemented.",
+  "intentCheck": {
+    "matchesDescription": "partial",
+    "rootCauseAddressed": "not_applicable",
+    "testsAdded": false,
+    "notes": "The description says coupons are validated for expiry and usage limits. Expiry is checked in src/coupons/validate.js:18 but with an inverted comparison; usage limits are not checked anywhere in the diff. No tests were added under test/coupons/."
+  },
+  "brd": {
+    "title": "BRD-142 Checkout coupons v2.pdf",
+    "requirements": [
+      { "id": "REQ-1", "text": "Customers can enter a coupon code on the checkout page before payment.", "status": "implemented", "evidence": ["web/checkout/CouponField.tsx:12", "web/checkout/Checkout.tsx:88"] },
+      { "id": "REQ-2", "text": "Percentage and fixed-amount coupons are supported; the discount never makes the total negative.", "status": "partial", "evidence": ["src/coupons/apply.js:9"], "notes": "Percentage only; fixed-amount coupons fall through to the default branch and apply 0." },
+      { "id": "REQ-3", "text": "Expired coupons are rejected with a clear message.", "status": "partial", "evidence": ["src/coupons/validate.js:18"], "notes": "Check exists but the comparison is inverted (see finding 2)." },
+      { "id": "REQ-4", "text": "Each customer can use a given coupon at most the number of times set on the coupon (default once).", "status": "missing", "evidence": [], "notes": "No usage tracking table or check in the diff." },
+      { "id": "REQ-5", "text": "Coupon usage is reported in the daily sales export.", "status": "not_verifiable", "evidence": [], "notes": "The export job lives in another service." }
+    ],
+    "outOfScopeChanges": [
+      "Renames formatPrice to formatMoney across 6 files (not requested by the BRD; harmless but widens the diff).",
+      "Bumps eslint from 8.57 to 9.2 in package.json."
+    ]
+  },
+  "findings": [
+    {
+      "priority": "P0",
+      "title": "SQL injection in coupon lookup",
+      "file": "src/coupons/repository.js",
+      "line": 22,
+      "category": "security",
+      "description": "The coupon code from the request body is concatenated into the SQL string. A code like ' OR '1'='1 returns every coupon, and a crafted value can run arbitrary SQL against the orders database.",
+      "suggestion": "// Use a parameterized query instead of string concatenation\nexport async function findCoupon(db, code) {\n  const { rows } = await db.query(\n    'SELECT id, kind, amount, expires_at, max_uses FROM coupons WHERE code = $1',\n    [code.trim().toUpperCase()],\n  );\n  return rows[0] ?? null;\n}"
+    },
+    {
+      "priority": "P1",
+      "title": "Expired coupons are accepted (inverted date comparison)",
+      "file": "src/coupons/validate.js",
+      "line": 18,
+      "category": "correctness",
+      "description": "The check rejects coupons whose expiry is in the future and accepts those already expired: `if (coupon.expiresAt > now) throw ...`. It should reject when expiresAt <= now.",
+      "suggestion": "if (coupon.expiresAt && coupon.expiresAt <= now) {\n  throw new CouponError('This coupon has expired');\n}"
+    },
+    {
+      "priority": "P1",
+      "title": "Fixed-amount coupons silently apply a zero discount",
+      "file": "src/coupons/apply.js",
+      "line": 9,
+      "category": "correctness",
+      "description": "The switch only handles kind === 'percent'; 'fixed' falls to default and returns the original total, so customers see the coupon accepted but no discount.",
+      "suggestion": "switch (coupon.kind) {\n  case 'percent':\n    return Math.max(0, total - Math.round(total * coupon.amount / 100));\n  case 'fixed':\n    return Math.max(0, total - coupon.amount);\n  default:\n    throw new CouponError(`Unknown coupon kind: ${coupon.kind}`);\n}"
+    },
+    {
+      "priority": "P2",
+      "title": "Discount computed with floating point on currency amounts",
+      "file": "src/coupons/apply.js",
+      "line": 11,
+      "category": "correctness",
+      "description": "total * 0.15 on minor units can produce values like 1274.9999 → rounding drift in receipts. Keep amounts in integer minor units and round once."
+    },
+    {
+      "priority": "P2",
+      "title": "No tests for coupon validation or application",
+      "file": "src/coupons/validate.js",
+      "category": "testing",
+      "description": "The new module has no unit tests. The inverted expiry check above would have been caught by a single test with an expired coupon."
+    },
+    {
+      "priority": "P3",
+      "title": "Magic number for coupon code length",
+      "file": "web/checkout/CouponField.tsx",
+      "line": 31,
+      "category": "clarity",
+      "description": "maxLength={16} duplicates a server-side limit; export a shared constant so the two can't drift."
+    }
+  ],
+  "recommendation": "Fix the SQL injection (P0) and both P1 correctness bugs before merging. Implement REQ-4 (per-customer usage limit) or get the BRD owner to defer it explicitly. Add unit tests for validate.js and apply.js covering expired, fixed-amount and over-discount cases. Consider splitting the formatPrice rename and the eslint bump into a separate PR.",
+  "meta": {
+    "repoPath": "/Users/demo/projects/shop-api",
+    "source": "feature/checkout-coupons",
+    "dest": "main",
+    "changeType": "feature",
+    "description": "Added coupon support at checkout: a coupon field on the checkout page, server-side validation (expiry + usage limits) and percentage/fixed discounts applied to the order total. Implements BRD-142 “Checkout coupons v2”.",
+    "brdSource": "BRD-142 Checkout coupons v2.pdf",
+    "repo": "shop-api",
+    "sourceSha": "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+    "destSha": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d",
+    "mergeBase": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+    "commits": [
+      { "sha": "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39", "subject": "Apply coupon discount to order total" },
+      { "sha": "3e1f8b0d7a6c5b4e3d2c1f0a9b8e7d6c5b4a3928", "subject": "Add coupon validation (expiry, usage)" },
+      { "sha": "2d0e7a9c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2817", "subject": "Coupon field on checkout page" },
+      { "sha": "1c9d6f8b5a4e3d2c1b0a9f8e7d6c5b4a39281706", "subject": "Rename formatPrice -> formatMoney" }
+    ],
+    "commitCount": 4,
+    "stats": { "files": 9, "insertions": 214, "deletions": 37 },
+    "createdAt": "2026-10-22T09:30:00.000Z",
+    "origin": "ui",
+    "model": "claude-opus-5-5",
+    "costUsd": 0.87,
+    "durationMs": 194000
+  },
+  "filesChanged": [
+    { "path": "src/coupons/repository.js", "insertions": 41, "deletions": 0 },
+    { "path": "src/coupons/validate.js", "insertions": 33, "deletions": 0 },
+    { "path": "src/coupons/apply.js", "insertions": 27, "deletions": 0 },
+    { "path": "src/orders/checkout.js", "insertions": 18, "deletions": 6 },
+    { "path": "web/checkout/CouponField.tsx", "insertions": 52, "deletions": 0 },
+    { "path": "web/checkout/Checkout.tsx", "insertions": 14, "deletions": 3 },
+    { "path": "src/util/format.js", "insertions": 6, "deletions": 6 },
+    { "path": "package.json", "insertions": 1, "deletions": 1 },
+    { "path": "web/assets/coupon-icon.png", "insertions": 0, "deletions": 0, "binary": true }
+  ]
+}

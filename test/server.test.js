@@ -1,0 +1,145 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { after, before, test } from 'node:test';
+import { saveReport } from '../src/report.js';
+import { Report } from '../src/schema.js';
+import { startServer } from '../src/server/index.js';
+import { loadFixture, makeRepo, useFakeClaude, useTempHome } from './helpers.js';
+
+let server;
+let repo;
+let base;
+let fake;
+
+before(async () => {
+  useTempHome();
+  fake = useFakeClaude();
+  repo = makeRepo();
+  server = await startServer({ port: 0, token: 'test-token' });
+  base = `http://127.0.0.1:${server.port}`;
+});
+
+after(async () => {
+  await server.close();
+});
+
+const api = (path, init = {}) => fetch(`${base}${path}`, { ...init, headers: { 'X-CRA-Token': 'test-token', ...init.headers } });
+
+function rawRequest(path, headers) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: server.port, path, headers }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('serves the UI with security headers', async () => {
+  const res = await fetch(`${base}/`);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /Code Review Agent/);
+  assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
+  assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+});
+
+test('API calls need the token', async () => {
+  assert.equal((await fetch(`${base}/api/status`)).status, 401);
+  assert.equal((await fetch(`${base}/api/status`, { headers: { 'X-CRA-Token': 'wrong' } })).status, 401);
+  assert.equal((await fetch(`${base}/api/status?t=test-token`)).status, 200);
+});
+
+test('requests for another host name are rejected (DNS rebinding)', async () => {
+  assert.equal(await rawRequest('/api/status?t=test-token', { Host: `evil.example:${server.port}` }), 403);
+  assert.equal(await rawRequest('/api/status?t=test-token', { Host: `localhost:${server.port}` }), 200);
+});
+
+test('status reports the Claude Code session', async () => {
+  const status = await (await api('/api/status?fresh=1')).json();
+  assert.equal(status.claude.loggedIn, true);
+  assert.equal(status.claude.subscriptionType, 'pro');
+  assert.equal(status.config.model, 'default');
+});
+
+test('lists branches for a repository', async () => {
+  const data = await (await api(`/api/branches?repo=${encodeURIComponent(repo)}`)).json();
+  assert.equal(data.repoPath, repo);
+  assert.equal(data.defaultDest, 'main');
+  assert.ok(data.branches.some((b) => b.name === 'feature/coupons'));
+  const bad = await api('/api/branches?repo=%2Fnot%2Fa%2Frepo');
+  assert.equal(bad.status, 400);
+});
+
+const postReview = (body) => api('/api/reviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const request = (overrides = {}) => ({ repoPath: repo, source: 'feature/coupons', dest: 'main', changeType: 'feature', description: 'Added coupons', ...overrides });
+
+test('starting a review when Claude Code is logged out explains what to do', async () => {
+  fake.setLoggedIn(false);
+  try {
+    const res = await postReview(request());
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /not logged in/);
+  } finally {
+    fake.setLoggedIn(true);
+  }
+});
+
+test('invalid review requests are rejected before claude runs', async () => {
+  const res = await postReview(request({ description: '' }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /description/);
+  const notJson = await api('/api/reviews', { method: 'POST', body: 'x' });
+  assert.equal(notJson.status, 415);
+});
+
+/** Collect SSE events for a run until a terminal one arrives. */
+async function runEvents(runId) {
+  const res = await api(`/api/reviews/${runId}/events`);
+  const text = await res.text();
+  return text.split('\n\n').filter((chunk) => chunk.startsWith('data: ')).map((chunk) => JSON.parse(chunk.slice(6)));
+}
+
+test('a full review: claude runs, the PDF is saved and appears in history', async () => {
+  fake.setMode('ok');
+  const res = await postReview(request({ brd: { text: 'REQ-1 Customers can enter a coupon code.' } }));
+  assert.equal(res.status, 202);
+  const { runId } = await res.json();
+  const events = await runEvents(runId);
+  const done = events.at(-1);
+  assert.equal(done.type, 'done', JSON.stringify(events));
+  assert.ok(events.some((e) => e.text === 'Loaded BRD: pasted text'));
+  assert.equal(done.entry.verdict, 'REQUEST_CHANGES', 'APPROVE with a P0 is corrected');
+  assert.equal(done.entry.origin, 'ui');
+  assert.equal(done.entry.costUsd, 0.12);
+  const pdf = await api(`/api/history/${done.entry.id}/pdf`);
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  assert.match(fake.lastRun().stdin, /"brdSource":"pasted text"/);
+  assert.equal((await api(`/api/history/${done.entry.id}`, { method: 'DELETE' })).status, 200);
+});
+
+test('a failed review reports the error', async () => {
+  fake.setMode('auth-error');
+  const { runId } = await (await postReview(request())).json();
+  const done = (await runEvents(runId)).at(-1);
+  assert.equal(done.type, 'error');
+  assert.match(done.text, /Not logged in/);
+  fake.setMode('ok');
+});
+
+test('history: list, detail, PDF download, delete', async () => {
+  const { entry } = await saveReport(Report.parse(loadFixture('sample-report.json')));
+  const { entries } = await (await api('/api/history')).json();
+  assert.deepEqual(entries.map((e) => e.id), [entry.id]);
+
+  const detail = await (await api(`/api/history/${entry.id}`)).json();
+  assert.equal(detail.report.verdict, 'REQUEST_CHANGES');
+
+  const pdf = await api(`/api/history/${entry.id}/pdf?download=1`);
+  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+  assert.match(pdf.headers.get('content-disposition'), /^attachment; filename="review-/);
+  assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+
+  assert.equal((await api(`/api/history/${entry.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await api(`/api/history/${entry.id}`)).status, 404);
+});

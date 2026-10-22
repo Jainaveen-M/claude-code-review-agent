@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code Review Agent</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/favicon.svg" alt="" width="22" height="22">
+      <span>Code Review Agent</span>
+    </div>
+    <div class="topbar-right">
+      <span id="session-pill" class="pill session"></span>
+      <span id="model-pill" class="pill" title="Model used for reviews"></span>
+      <button id="settings-btn" class="btn ghost" type="button">Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="banner" class="banner" role="status" hidden></div>
+
+    <section class="card" aria-labelledby="new-review-title">
+      <div class="card-head">
+        <h2 id="new-review-title">New review</h2>
+      </div>
+
+      <form id="review-form" class="form-grid" novalidate>
+        <div class="field full">
+          <label for="repo">Repository</label>
+          <div class="row">
+            <input id="repo" list="recent-repos" placeholder="/absolute/path/to/your/repo" autocomplete="off" spellcheck="false" required>
+            <datalist id="recent-repos"></datalist>
+            <button type="button" id="load-branches" class="btn">Load branches</button>
+          </div>
+          <p class="hint" id="repo-hint"></p>
+        </div>
+
+        <div class="field">
+          <label for="source">Source branch <span class="sub">your changes</span></label>
+          <select id="source" required disabled><option>Load a repository first</option></select>
+        </div>
+        <div class="field">
+          <label for="dest">Destination branch <span class="sub">merging into</span></label>
+          <select id="dest" required disabled><option>Load a repository first</option></select>
+        </div>
+
+        <div class="field full inline">
+          <label class="check"><input type="checkbox" id="fetch" checked> Fetch remotes before reviewing</label>
+          <button type="button" id="refresh-branches" class="link" disabled>Fetch now and refresh branches</button>
+        </div>
+
+        <fieldset class="field full">
+          <legend>Type of change</legend>
+          <div class="segmented" role="radiogroup">
+            <label><input type="radio" name="changeType" value="bugfix" checked><span>Bug fix</span></label>
+            <label><input type="radio" name="changeType" value="feature"><span>Feature</span></label>
+            <label><input type="radio" name="changeType" value="refactor"><span>Refactor</span></label>
+            <label><input type="radio" name="changeType" value="other"><span>Other</span></label>
+          </div>
+        </fieldset>
+
+        <div class="field full">
+          <label for="description">What did you fix or change?</label>
+          <textarea id="description" rows="4" required placeholder="e.g. Fixed double charge when the payment retry fires after a timeout. Added an idempotency key to the charge call and a regression test."></textarea>
+          <p class="hint">The review checks the code against this description, so be specific.</p>
+        </div>
+
+        <fieldset class="field full" id="brd-field" hidden>
+          <legend>BRD <span class="sub">optional: checks each requirement against the code</span></legend>
+          <div class="segmented small" role="radiogroup">
+            <label><input type="radio" name="brdMode" value="none" checked><span>No BRD</span></label>
+            <label><input type="radio" name="brdMode" value="file"><span>Upload file</span></label>
+            <label><input type="radio" name="brdMode" value="text"><span>Paste text</span></label>
+          </div>
+          <label id="brd-upload" class="dropzone" hidden>
+            <input type="file" id="brd-file" accept=".pdf,.docx,.md,.markdown,.txt">
+            <span id="brd-file-label">Choose a PDF, Word (.docx), Markdown or text file, up to 20 MB</span>
+          </label>
+          <textarea id="brd-text" rows="7" placeholder="Paste the BRD or its requirements here" hidden></textarea>
+        </fieldset>
+
+        <div class="actions full">
+          <button type="submit" class="btn primary" id="run-btn">Run review</button>
+          <p class="error" id="form-error" role="alert"></p>
+        </div>
+      </form>
+
+      <div id="run-panel" class="run-panel" hidden>
+        <div class="run-head">
+          <div class="run-title">
+            <span id="run-spinner" class="spinner" aria-hidden="true"></span>
+            <strong id="run-title">Reviewing</strong>
+            <span id="run-elapsed" class="muted"></span>
+          </div>
+          <div class="run-buttons">
+            <button id="cancel-btn" class="btn danger-ghost" type="button">Cancel</button>
+            <button id="new-btn" class="btn" type="button" hidden>New review</button>
+          </div>
+        </div>
+        <div id="run-result" hidden></div>
+        <ol id="run-log" class="log" aria-live="polite"></ol>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="history-title">
+      <div class="card-head">
+        <h2 id="history-title">History</h2>
+        <div class="filters">
+          <input id="h-search" type="search" placeholder="Search branches" aria-label="Search branches">
+          <select id="h-repo" aria-label="Filter by repository"><option value="">All repositories</option></select>
+          <select id="h-verdict" aria-label="Filter by verdict">
+            <option value="">All verdicts</option>
+            <option value="APPROVE">Approve</option>
+            <option value="REQUEST_CHANGES">Request changes</option>
+            <option value="NEEDS_DISCUSSION">Needs discussion</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="h-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Repository</th>
+              <th>Branches</th>
+              <th class="hide-sm">Type</th>
+              <th>Verdict</th>
+              <th>Findings</th>
+              <th class="hide-sm num" title="API-equivalent cost reported by Claude Code. On a subscription this is an estimate of usage, not a charge.">Est. cost</th>
+              <th class="actions-col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="h-empty" class="empty" hidden>No reviews yet. Run one above, or use <code>/branch-review</code> in Claude Code.</p>
+    </section>
+  </main>
+
+  <dialog id="detail-dialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 id="detail-title">Review</h3>
+      <button class="btn ghost" value="close" aria-label="Close">Close</button>
+    </form>
+    <div id="detail-body" class="dialog-body"></div>
+  </dialog>
+
+  <dialog id="settings-dialog" class="dialog">
+    <form id="settings-form" method="dialog">
+      <div class="dialog-head"><h3>Settings</h3></div>
+      <div class="dialog-body form-stack">
+        <label>Model
+          <select id="cfg-model"></select>
+          <span class="hint">Models available depend on your Claude plan.</span>
+        </label>
+        <label>Effort
+          <select id="cfg-effort"></select>
+          <span class="hint">Higher effort reviews more thoroughly and costs more.</span>
+        </label>
+        <label>Stop a review above this estimated cost (USD)
+          <input id="cfg-budget" type="number" min="0.1" step="0.1" placeholder="No limit">
+          <span class="hint">Uses Claude Code's API-equivalent estimate. Useful for keeping long reviews from eating into your plan's usage limits.</span>
+        </label>
+        <p class="hint">Reports are saved in <code id="cfg-home"></code></p>
+        <p class="error" id="settings-error" role="alert"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn primary" id="settings-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="dialog">
+    <form method="dialog">
+      <div class="dialog-head"><h3>Delete report?</h3></div>
+      <div class="dialog-body"><p id="confirm-text"></p></div>
+      <div class="dialog-foot">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn danger" value="confirm">Delete</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

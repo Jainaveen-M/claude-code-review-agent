@@ -1,0 +1,5 @@
+{
+  "name": "code-review-agent",
+  "version": "0.1.0",
+  "description": "Review the diff between two git branches against the author's fix description or a BRD, and produce a PDF report."
+}
