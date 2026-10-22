@@ -9,6 +9,7 @@ import { render as renderHistory } from './history.js';
 import { render as renderReport } from './report.js';
 import { render as renderRun } from './run.js';
 import { initSettings } from './settings.js';
+import { initTheme } from './theme.js';
 import { loadRecentRepos, loadStatus, showBanner, state } from './store.js';
 import { render as renderWizard } from './wizard.js';
 
@@ -39,6 +40,7 @@ function route() {
 }
 
 async function init() {
+  initTheme();
   if (!initToken()) {
     showBanner('Open this page from the terminal link', 'Run `code-review-agent ui` and open the URL it prints. It includes an access token.', 'error');
     return;

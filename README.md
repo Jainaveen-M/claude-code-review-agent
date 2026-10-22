@@ -44,6 +44,8 @@ This opens `http://127.0.0.1:4477`:
 
 The reviewed diff is saved with each report, so the code view keeps working after branches are rebased or deleted.
 
+The sun / moon / screen switch in the top bar picks a light or dark theme, or follows your system setting. Your choice is remembered in the browser.
+
 Under **Settings** you can pick the model (by default, whatever Claude Code uses on your plan) and the effort level. You can also stop reviews above an estimated cost.
 
 ## Use it inside Claude Code

@@ -1,6 +1,6 @@
 // Settings dialog: model, effort, cost limit.
 import { api } from './api.js';
-import { $, fill, h, modelLabel } from './dom.js';
+import { $, fill, h, icon, modelLabel } from './dom.js';
 import { renderStatus, state } from './store.js';
 
 const MODELS = ['default', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
@@ -24,6 +24,7 @@ async function save(event) {
 }
 
 export function initSettings() {
+  $('#settings-btn').prepend(icon('sliders', 15));
   $('#settings-btn').addEventListener('click', () => openSettings());
   $('#settings-form').addEventListener('submit', save);
 }

@@ -56,54 +56,54 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #151b23;
-    --surface-2: #1c232c;
-    --surface-3: #232b35;
-    --text: #e6edf3;
-    --text-2: #c9d1d9;
-    --muted: #9198a1;
-    --border: #2f3742;
-    --border-strong: #454f5b;
-    --accent: #818cf8;
-    --accent-hover: #a5b4fc;
-    --accent-soft: #23264a;
-    --accent-text: #0d1117;
-    --focus: #a5b4fc;
-    --danger: #f47067;
-    --danger-soft: #3d1d1f;
-    --ok: #57ab5a;
-    --ok-soft: #1b3326;
-    --warn: #daaa3f;
-    --warn-soft: #3a2f12;
-    --info: #6da7ec;
-    --info-soft: #172a45;
-    --p0: #e5534b;
-    --p1: #d1692c;
-    --p2: #c69026;
-    --p2-text: #0d1117;
-    --p3: #6e7681;
-    --verdict-approve: #57ab5a;
-    --verdict-discuss: #6da7ec;
-    --verdict-changes: #f47067;
-    --verdict-text: #0d1117;
-    --series-1: #3987e5;
-    --mark-approve: #0ca30c;
-    --mark-discuss: #3987e5;
-    --mark-changes: #d03b3b;
-    --grid: #2a313b;
-    --axis: #454f5b;
-    --diff-add: #12261e;
-    --diff-add-num: #1a3a2a;
-    --diff-del: #2d1517;
-    --diff-del-num: #4a1d20;
-    --diff-hunk: #161f2c;
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-    --shadow-lg: 0 8px 28px rgb(0 0 0 / 50%);
-  }
+/* Dark theme. js/theme-init.js sets data-theme from the saved choice or the OS setting
+   before the page is drawn; the switch in the top bar changes it live. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1c232c;
+  --surface-3: #232b35;
+  --text: #e6edf3;
+  --text-2: #c9d1d9;
+  --muted: #9198a1;
+  --border: #2f3742;
+  --border-strong: #454f5b;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-soft: #23264a;
+  --accent-text: #0d1117;
+  --focus: #a5b4fc;
+  --danger: #f47067;
+  --danger-soft: #3d1d1f;
+  --ok: #57ab5a;
+  --ok-soft: #1b3326;
+  --warn: #daaa3f;
+  --warn-soft: #3a2f12;
+  --info: #6da7ec;
+  --info-soft: #172a45;
+  --p0: #e5534b;
+  --p1: #d1692c;
+  --p2: #c69026;
+  --p2-text: #0d1117;
+  --p3: #6e7681;
+  --verdict-approve: #57ab5a;
+  --verdict-discuss: #6da7ec;
+  --verdict-changes: #f47067;
+  --verdict-text: #0d1117;
+  --series-1: #3987e5;
+  --mark-approve: #0ca30c;
+  --mark-discuss: #3987e5;
+  --mark-changes: #d03b3b;
+  --grid: #2a313b;
+  --axis: #454f5b;
+  --diff-add: #12261e;
+  --diff-add-num: #1a3a2a;
+  --diff-del: #2d1517;
+  --diff-del-num: #4a1d20;
+  --diff-hunk: #161f2c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 8px 28px rgb(0 0 0 / 50%);
 }
 
 /* ==========================================================================
@@ -254,6 +254,23 @@ label { font-weight: 600; }
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
 
+.theme-toggle { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); }
+.theme-toggle button {
+  font: inherit;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  width: 30px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.theme-toggle button:hover { color: var(--text); }
+.theme-toggle button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+body, .topbar, .card { transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+
 /* ==========================================================================
    Layout: top bar, page, cards
    ========================================================================== */
@@ -281,6 +298,7 @@ label { font-weight: 600; }
   font-weight: 550;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  white-space: nowrap;
 }
 .nav a:hover { color: var(--text); }
 .nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
@@ -895,7 +913,8 @@ td.row-actions .btn { margin-left: 4px; }
 }
 @media (max-width: 720px) {
   .topbar { gap: 10px; }
-  .brand .brand-text, .topbar .pill { display: none; }
+  .brand .brand-text, .topbar .pill, #settings-btn .btn-text { display: none; }
+  .theme-toggle button { width: 28px; }
   .nav a { padding: 0 8px; }
   main { padding: 16px 16px 48px; }
   .card { padding: 16px; }

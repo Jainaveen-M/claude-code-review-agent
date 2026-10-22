@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Code Review Agent</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/js/theme-init.js"></script>
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/js/main.js"></script>
 </head>
@@ -21,7 +22,8 @@
     <div class="topbar-right">
       <span id="session-pill" class="pill session"></span>
       <span id="model-pill" class="pill mono" title="Model used for reviews"></span>
-      <button id="settings-btn" class="btn ghost small" type="button">Settings</button>
+      <div id="theme-toggle" class="theme-toggle" role="group" aria-label="Colour theme"></div>
+      <button id="settings-btn" class="btn ghost small" type="button" aria-label="Settings"><span class="btn-text">Settings</span></button>
     </div>
   </header>
 
