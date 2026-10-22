@@ -72,6 +72,25 @@ function relative(repoPath, file) {
   return rel && !rel.startsWith('..') ? rel : path.basename(file);
 }
 
+/**
+ * The repo-relative file a tool call is about, if any: Read paths, and git
+ * commands like `git show <rev>:<path>` or `git diff ... -- <path>`.
+ */
+export function fileFromToolUse(name, input, repoPath) {
+  if (name === 'Read' && input?.file_path) {
+    const rel = path.relative(repoPath, input.file_path);
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : null;
+  }
+  if (name === 'Bash') {
+    const command = String(input?.command ?? '');
+    const afterDashes = command.match(/\s--\s+(\S+)\s*$/);
+    if (afterDashes) return afterDashes[1].replace(/^["']|["']$/g, '');
+    const showPath = command.match(/^git show\s+\S*?:(\S+)/);
+    if (showPath) return showPath[1].replace(/^["']|["']$/g, '');
+  }
+  return null;
+}
+
 /** Short, human-readable progress line for a tool call. */
 export function describeToolUse(name, input, repoPath) {
   switch (name) {
@@ -156,7 +175,8 @@ export function runReview({ facts, inputs, brd, config, abortController, onEvent
       } else if (message.type === 'assistant') {
         for (const block of message.message?.content ?? []) {
           if (block.type === 'tool_use') {
-            onEvent({ type: 'progress', text: describeToolUse(block.name, block.input, facts.repoPath) });
+            const file = fileFromToolUse(block.name, block.input, facts.repoPath);
+            onEvent({ type: 'progress', text: describeToolUse(block.name, block.input, facts.repoPath), tool: block.name, ...(file ? { file } : {}) });
           } else if (block.type === 'text' && block.text.trim()) {
             onEvent({ type: 'note', text: block.text.trim().slice(0, 400) });
           }

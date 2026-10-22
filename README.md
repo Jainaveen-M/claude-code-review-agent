@@ -30,12 +30,19 @@ cd ~/projects/my-repo        # optional: preselects this repo
 code-review-agent ui
 ```
 
-This opens `http://127.0.0.1:4477`. Then:
+This opens `http://127.0.0.1:4477`:
 
-1. Choose the repository: click **Browse…** to pick a folder (git repos are marked, and **Find git repos here** lists every repo a few levels down), click a recent repo, or type the path. On macOS you can also use the Finder picker. Then pick the source and destination branches.
-2. Choose the type of change and describe what you fixed or changed.
-3. For a feature, optionally upload the BRD (PDF, Word, Markdown or text) or paste it.
-4. Click **Run review**. Progress streams live, and the PDF appears under **History** when it's done.
+- **New review** walks you through five steps:
+  1. **Project:** the repo you launched from, a recent project, or **Browse folders…** (git repos are marked; **Find git repos here** lists every repo a few levels down).
+  2. **Branches:** pick your branch and the one it merges into from searchable lists. A live preview shows the commits and files that will be reviewed before anything runs.
+  3. **What changed:** bug fix, feature, refactor or other, plus your description (with tips, and a button to start from your commit messages).
+  4. **BRD** (features only): drag in a PDF, Word, Markdown or text file, paste the text, or skip.
+  5. **Review:** check your choices and start.
+- **Live review:** progress through the phases, a file tree that lights up as Claude reads each changed file, and an activity feed. You can cancel at any time.
+- **Report:** an overview (verdict, summary, recommendation, intent check, top findings); **Code & findings**, the diff with every finding pinned to its line (filter by priority, step through findings, copy suggested fixes); and a **BRD checklist** with coverage, status filters and evidence links that jump to the code.
+- **History:** a dashboard with totals, reviews over time by verdict, findings by priority and reviews by repository. Click any bar or legend entry to filter the whole page. Every chart has a data table, and the table below lists every report.
+
+The reviewed diff is saved with each report, so the code view keeps working after branches are rebased or deleted.
 
 Under **Settings** you can pick the model (by default, whatever Claude Code uses on your plan) and the effort level. You can also stop reviews above an estimated cost.
 

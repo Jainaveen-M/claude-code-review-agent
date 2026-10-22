@@ -52,15 +52,15 @@ export async function fetchRemotes(repo) {
 /** Local and remote branches, most recently committed first. */
 export async function listBranches(repo) {
   const out = await git(
-    ['for-each-ref', '--sort=-committerdate', '--format=%(refname)%09%(refname:short)%09%(committerdate:iso-strict)', 'refs/heads', 'refs/remotes'],
+    ['for-each-ref', '--sort=-committerdate', '--format=%(refname)%09%(refname:short)%09%(committerdate:iso-strict)%09%(authorname)%09%(subject)', 'refs/heads', 'refs/remotes'],
     repo,
   );
   const branches = [];
   for (const line of out.split('\n')) {
     if (!line) continue;
-    const [full, name, date] = line.split('\t');
+    const [full, name, date, author, ...subject] = line.split('\t');
     if (full.endsWith('/HEAD')) continue;
-    branches.push({ name, kind: full.startsWith('refs/heads/') ? 'local' : 'remote', date });
+    branches.push({ name, kind: full.startsWith('refs/heads/') ? 'local' : 'remote', date, author, subject: subject.join('\t') });
   }
   let current = null;
   try {
@@ -154,4 +154,22 @@ export async function collectGitFacts(repoPath, sourceName, destName) {
     },
     filesChanged,
   };
+}
+
+/** How many commits `dest` has that the source branch doesn't (it may need a rebase). */
+export async function behindCount(repo, sourceSha, destSha) {
+  return Number((await git(['rev-list', '--count', `${sourceSha}..${destSha}`], repo)).trim());
+}
+
+const MAX_DIFF_BYTES = 5 * 1024 * 1024;
+
+/**
+ * The unified diff a review covers (merge base to source). Very large diffs are
+ * cut at a file boundary; `truncated` says so.
+ */
+export async function diffText(repo, mergeBase, sourceSha, { maxBytes = MAX_DIFF_BYTES } = {}) {
+  const text = await git(['diff', '--no-color', '--no-ext-diff', '-U3', mergeBase, sourceSha], repo);
+  if (Buffer.byteLength(text) <= maxBytes) return { text, truncated: false };
+  const cut = text.lastIndexOf('\ndiff --git ', maxBytes);
+  return { text: text.slice(0, cut > 0 ? cut + 1 : maxBytes), truncated: true };
 }

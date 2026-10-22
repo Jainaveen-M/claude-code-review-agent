@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { writeFileAtomic } from './config.js';
-import { collectGitFacts } from './git.js';
+import { collectGitFacts, diffText } from './git.js';
 import { addEntry, entryFromReport, reportBasePath } from './history.js';
 import { renderReportPdf } from './render-pdf.js';
 import { AgentReview, Report, ReviewDraft, enforceVerdict, formatZodError } from './schema.js';
@@ -30,7 +30,18 @@ export function buildReport({ facts, inputs, review, origin, run = {} }) {
   return Report.parse(report);
 }
 
-/** Write the report JSON and PDF into the history folder and add an index entry. */
+/** Save the reviewed diff next to the report, so the code viewer works after branches change. */
+async function saveDiff(meta, diffPath) {
+  try {
+    const { text, truncated } = await diffText(meta.repoPath, meta.mergeBase, meta.sourceSha);
+    writeFileAtomic(diffPath, truncated ? `${text}\n# diff truncated\n` : text);
+    return diffPath;
+  } catch {
+    return null; // repository or commits no longer available
+  }
+}
+
+/** Write the report JSON, PDF and diff into the history folder and add an index entry. */
 export async function saveReport(report, { history = true, pdfPath } = {}) {
   const id = crypto.randomUUID();
   const base = reportBasePath(report.meta);
@@ -40,7 +51,8 @@ export async function saveReport(report, { history = true, pdfPath } = {}) {
   await renderReportPdf(stored, outPdf);
   if (!history) return { entry: null, pdfPath: outPdf, jsonPath: null };
   writeFileAtomic(jsonPath, JSON.stringify(stored, null, 2));
-  const entry = addEntry(entryFromReport(stored, { id, pdfPath: outPdf, jsonPath }));
+  const diffPath = await saveDiff(stored.meta, `${base}.diff`);
+  const entry = addEntry(entryFromReport(stored, { id, pdfPath: outPdf, jsonPath, diffPath }));
   return { entry, pdfPath: outPdf, jsonPath };
 }
 

@@ -14,7 +14,7 @@ const C = {
 const VERDICT = {
   APPROVE: { label: 'APPROVE', color: '#1a7f37' },
   REQUEST_CHANGES: { label: 'REQUEST CHANGES', color: '#cf222e' },
-  NEEDS_DISCUSSION: { label: 'NEEDS DISCUSSION', color: '#9a6700' },
+  NEEDS_DISCUSSION: { label: 'NEEDS DISCUSSION', color: '#256abf' },
 };
 const PRIORITY = {
   P0: { bg: '#cf222e', fg: '#ffffff', label: 'Critical' },

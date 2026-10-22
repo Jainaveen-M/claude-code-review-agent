@@ -23,8 +23,21 @@ const review = {
   confidence: 'HIGH',
   summary: 'Adds coupons with a lookup that concatenates SQL.',
   intentCheck: { matchesDescription: 'yes', rootCauseAddressed: 'not_applicable', testsAdded: false, notes: 'src/coupons.js:1' },
-  findings: [{ priority: 'P0', title: 'SQL injection', file: 'src/coupons.js', line: 2, category: 'security', description: 'Concatenated SQL.', suggestion: "db.query('... = $1', [code])" }],
+  findings: [
+    { priority: 'P0', title: 'SQL injection', file: 'src/coupons.js', line: 2, category: 'security', description: 'Concatenated SQL.', suggestion: "db.query('... = $1', [code])" },
+    { priority: 'P1', title: 'Discount can make the total negative', file: 'src/checkout.js', line: 2, category: 'correctness', description: 'A discount larger than the order total gives a negative amount.', suggestion: 'return Math.max(0, subtotal - discount);' },
+    { priority: 'P3', title: 'Name the lookup after what it returns', file: 'src/coupons.js', category: 'clarity', description: 'findCoupon returns a query promise, not a coupon.' },
+  ],
   recommendation: 'Parameterize the query.',
+};
+const brd = {
+  title: 'Coupons BRD',
+  requirements: [
+    { id: 'REQ-1', text: 'Customers can enter a coupon code.', status: 'implemented', evidence: ['src/coupons.js:1'] },
+    { id: 'REQ-2', text: 'Discounts never make the total negative.', status: 'missing', evidence: ['src/checkout.js:2'], notes: 'subtotal - discount can go below zero.' },
+    { id: 'REQ-3', text: 'Coupon usage is reported in the daily export.', status: 'not_verifiable', evidence: [] },
+  ],
+  outOfScopeChanges: [],
 };
 
 let stdin = '';
@@ -58,8 +71,10 @@ process.stdin.on('end', () => {
     return;
   }
   emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Reviewing the coupon change.' }, { type: 'tool_use', name: 'Read', input: { file_path: `${process.cwd()}/src/coupons.js` } }] } });
+  const output = stdin.includes('"brdPath"') ? { ...review, brd } : review;
   setTimeout(() => {
-    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'StructuredOutput', input: review }] } });
-    emit({ type: 'result', subtype: 'success', is_error: false, result: '', structured_output: review, total_cost_usd: 0.12, duration_ms: 4200 });
+    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'git show HEAD:src/checkout.js' } }] } });
+    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'StructuredOutput', input: output }] } });
+    emit({ type: 'result', subtype: 'success', is_error: false, result: '', structured_output: output, total_cost_usd: 0.12, duration_ms: 4200 });
   }, Number(process.env.FAKE_CLAUDE_DELAY_MS ?? 0));
 });

@@ -114,6 +114,32 @@ async function runEvents(runId) {
   return text.split('\n\n').filter((chunk) => chunk.startsWith('data: ')).map((chunk) => JSON.parse(chunk.slice(6)));
 }
 
+test('preview shows what a review would cover, without running claude', async () => {
+  const params = new URLSearchParams({ repo, source: 'feature/coupons', dest: 'main' });
+  const preview = await (await api(`/api/preview?${params}`)).json();
+  assert.equal(preview.commitCount, 1);
+  assert.equal(preview.behind, 0);
+  assert.deepEqual(preview.filesChanged.map((f) => f.path).sort(), ['src/checkout.js', 'src/coupons.js']);
+  const empty = await api(`/api/preview?${new URLSearchParams({ repo, source: 'noop', dest: 'main' })}`);
+  assert.equal(empty.status, 400);
+  assert.match((await empty.json()).error, /No changes/);
+});
+
+test('branches include the last commit subject and author', async () => {
+  const { branches } = await (await api(`/api/branches?repo=${encodeURIComponent(repo)}`)).json();
+  const coupons = branches.find((b) => b.name === 'feature/coupons');
+  assert.equal(coupons.subject, 'Add coupons');
+  assert.equal(coupons.author, 'Test');
+});
+
+test('static files are served from web/ only', async () => {
+  assert.equal((await fetch(`${base}/js/main.js`)).status, 200);
+  assert.match((await fetch(`${base}/js/main.js`)).headers.get('content-type'), /javascript/);
+  assert.equal((await fetch(`${base}/js/missing.js`)).status, 404);
+  assert.equal(await rawRequest('/%2e%2e/package.json', { Host: `127.0.0.1:${server.port}` }), 404);
+  assert.equal(await rawRequest('/../src/config.js', { Host: `127.0.0.1:${server.port}` }), 404);
+});
+
 test('a full review: claude runs, the PDF is saved and appears in history', async () => {
   fake.setMode('ok');
   const res = await postReview(request({ brd: { text: 'REQ-1 Customers can enter a coupon code.' } }));
@@ -129,6 +155,14 @@ test('a full review: claude runs, the PDF is saved and appears in history', asyn
   const pdf = await api(`/api/history/${done.entry.id}/pdf`);
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   assert.match(fake.lastRun().stdin, /"brdSource":"pasted text"/);
+  assert.deepEqual(events.filter((e) => e.type === 'phase').map((e) => e.phase), ['compare', 'brd', 'review', 'report']);
+  assert.deepEqual(events.find((e) => e.type === 'facts').facts.filesChanged.map((f) => f.path).sort(), ['src/checkout.js', 'src/coupons.js']);
+  assert.ok(events.some((e) => e.type === 'progress' && e.tool === 'Read' && e.file === 'src/coupons.js'), 'file activity is reported');
+  const info = await (await api(`/api/reviews/${runId}`)).json();
+  assert.deepEqual({ source: info.source, dest: info.dest, hasBrd: info.hasBrd, status: info.status }, { source: 'feature/coupons', dest: 'main', hasBrd: true, status: 'done' });
+  const diff = await api(`/api/history/${done.entry.id}/diff`);
+  assert.equal(diff.status, 200);
+  assert.match(await diff.text(), /^diff --git a\/src\/checkout\.js/m);
   assert.equal((await api(`/api/history/${done.entry.id}`, { method: 'DELETE' })).status, 200);
 });
 

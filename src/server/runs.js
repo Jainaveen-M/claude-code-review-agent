@@ -17,7 +17,7 @@ class Run {
   constructor(request) {
     this.id = crypto.randomUUID();
     this.status = 'running';
-    this.request = { repoPath: request.repoPath, source: request.source, dest: request.dest, changeType: request.changeType };
+    this.request = { repoPath: request.repoPath, source: request.source, dest: request.dest, changeType: request.changeType, hasBrd: Boolean(request.brd) };
     this.startedAt = new Date().toISOString();
     this.events = [];
     this.listeners = new Set();
@@ -60,6 +60,7 @@ function prune() {
 async function execute(run, request, config) {
   const runDir = path.join(homeDir(), '.runs', run.id);
   try {
+    run.emit({ type: 'phase', phase: 'compare' });
     if (request.fetch) {
       run.emit({ type: 'progress', text: 'Fetching remotes' });
       const { warning } = await fetchRemotes(request.repoPath);
@@ -71,9 +72,14 @@ async function execute(run, request, config) {
       type: 'progress',
       text: `${facts.commitCount} commits, ${facts.stats.files} files changed (+${facts.stats.insertions} / -${facts.stats.deletions})`,
     });
+    run.emit({
+      type: 'facts',
+      facts: { repo: facts.repo, commitCount: facts.commitCount, commits: facts.commits.slice(0, 20), stats: facts.stats, filesChanged: facts.filesChanged },
+    });
 
     let brd = null;
     if (request.brd) {
+      run.emit({ type: 'phase', phase: 'brd' });
       brd = await saveBrd(runDir, request.brd);
       run.emit({ type: 'progress', text: `Loaded BRD: ${brd.source}` });
     }
@@ -86,9 +92,11 @@ async function execute(run, request, config) {
       ...(brd ? { brdSource: brd.source } : {}),
     };
 
+    run.emit({ type: 'phase', phase: 'review' });
     const { review, run: runInfo } = await runReview({
       facts, inputs, brd, config, abortController: run.abortController, onEvent: (event) => run.emit(event),
     });
+    run.emit({ type: 'phase', phase: 'report' });
     run.emit({ type: 'progress', text: 'Rendering the PDF' });
     const { entry } = await saveReport(buildReport({ facts, inputs, review, origin: 'ui', run: runInfo }));
     run.status = 'done';

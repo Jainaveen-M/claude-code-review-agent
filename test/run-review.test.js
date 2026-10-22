@@ -42,6 +42,7 @@ test('a successful run returns the structured review and streams progress', asyn
     'Started review with claude-test-model on your Claude Code session',
     'Reviewing the coupon change.',
     'Reading src/coupons.js',
+    'Running git show HEAD:src/checkout.js',
     'Writing the report',
   ]);
 });

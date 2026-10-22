@@ -5,7 +5,7 @@ import { BrdError } from '../brd.js';
 import { claudeStatus } from '../agent/claude-cli.js';
 import { VERSION, readConfig, writeConfig } from '../config.js';
 import { FolderError, findRepos, listFolder, nativePickerAvailable, pickFolderNative } from '../folders.js';
-import { GitError, fetchRemotes, listBranches, repoRoot } from '../git.js';
+import { GitError, behindCount, collectGitFacts, diffText, fetchRemotes, listBranches, repoRoot } from '../git.js';
 import { deleteEntry, getEntry, listEntries, readReport, recentRepos } from '../history.js';
 import { ReportError } from '../report.js';
 import { CHANGE_TYPES, formatZodError } from '../schema.js';
@@ -60,6 +60,21 @@ async function branches(ctx, req, res, url) {
   const repo = await repoRoot(url.searchParams.get('repo') ?? '');
   const fetched = url.searchParams.get('fetch') === '1' ? await fetchRemotes(repo) : null;
   sendJson(res, 200, { repoPath: repo, repo: path.basename(repo), ...(await listBranches(repo)), warning: fetched?.warning ?? null });
+}
+
+/** What a review of source into dest would cover: computed by git, no model involved. */
+async function preview(ctx, req, res, url) {
+  const p = url.searchParams;
+  const facts = await collectGitFacts(p.get('repo') ?? '', p.get('source') ?? '', p.get('dest') ?? '');
+  sendJson(res, 200, {
+    repo: facts.repo,
+    mergeBase: facts.mergeBase,
+    commitCount: facts.commitCount,
+    commits: facts.commits.slice(0, 50),
+    stats: facts.stats,
+    filesChanged: facts.filesChanged,
+    behind: await behindCount(facts.repoPath, facts.sourceSha, facts.destSha),
+  });
 }
 
 /** Run a folders.js call, turning its errors into HTTP errors. */
@@ -132,6 +147,12 @@ async function reviewEvents(ctx, req, res, url, [id]) {
   req.on('close', close);
 }
 
+async function reviewInfo(ctx, req, res, url, [id]) {
+  const run = getRun(id);
+  if (!run) throw new HttpError(404, 'This review is not running any more. Finished reviews are in History.');
+  sendJson(res, 200, run.summary());
+}
+
 async function cancelReview(ctx, req, res, url, [id]) {
   const run = getRun(id);
   if (!run) throw new HttpError(404, 'Unknown review run');
@@ -168,6 +189,22 @@ async function historyPdf(ctx, req, res, url, [id]) {
   fs.createReadStream(entry.pdfPath).pipe(res);
 }
 
+/** The diff a report covered: saved with the report, or recomputed if the commits still exist. */
+async function historyDiff(ctx, req, res, url, [id]) {
+  const entry = requireEntry(id);
+  let text = entry.diffPath && fs.existsSync(entry.diffPath) ? fs.readFileSync(entry.diffPath, 'utf8') : null;
+  if (text === null) {
+    const { meta } = readReport(entry);
+    try {
+      text = (await diffText(meta.repoPath, meta.mergeBase, meta.sourceSha)).text;
+    } catch {
+      throw new HttpError(404, 'The code for this review is no longer available (the repository or its commits were moved or deleted).');
+    }
+  }
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(text);
+}
+
 async function deleteHistory(ctx, req, res, url, [id]) {
   requireEntry(id);
   deleteEntry(id);
@@ -178,17 +215,20 @@ export const routes = [
   ['GET', /^\/api\/status$/, status],
   ['GET', /^\/api\/repos\/recent$/, recent],
   ['GET', /^\/api\/branches$/, branches],
+  ['GET', /^\/api\/preview$/, preview],
   ['GET', /^\/api\/folders$/, folders],
   ['GET', /^\/api\/folders\/repos$/, folderRepos],
   ['POST', /^\/api\/folders\/pick$/, pickFolder],
   ['GET', /^\/api\/config$/, getConfig],
   ['PUT', /^\/api\/config$/, putConfig],
   ['POST', /^\/api\/reviews$/, createReview],
+  ['GET', /^\/api\/reviews\/([\w-]+)$/, reviewInfo],
   ['GET', /^\/api\/reviews\/([\w-]+)\/events$/, reviewEvents],
   ['POST', /^\/api\/reviews\/([\w-]+)\/cancel$/, cancelReview],
   ['GET', /^\/api\/history$/, history],
   ['GET', /^\/api\/history\/([\w-]+)$/, historyItem],
   ['GET', /^\/api\/history\/([\w-]+)\/pdf$/, historyPdf],
+  ['GET', /^\/api\/history\/([\w-]+)\/diff$/, historyDiff],
   ['DELETE', /^\/api\/history\/([\w-]+)$/, deleteHistory],
 ];
 

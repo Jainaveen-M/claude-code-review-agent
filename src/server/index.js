@@ -10,11 +10,11 @@ import { BusyError } from './runs.js';
 
 const MAX_BODY_BYTES = 30 * 1024 * 1024; // a 20 MB BRD grows by a third as base64
 const PORT_ATTEMPTS = 10;
-const STATIC_FILES = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
-  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+const STATIC_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
 };
 const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
@@ -57,10 +57,22 @@ function tokenMatches(given, expected) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function serveStatic(res, pathname) {
-  const [file, type] = STATIC_FILES[pathname];
-  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
-  fs.createReadStream(path.join(WEB_DIR, file)).pipe(res);
+/** The file under web/ for a URL path, or null. Never resolves outside web/. */
+function staticFile(pathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+  } catch {
+    return null;
+  }
+  const file = path.resolve(WEB_DIR, `.${decoded}`);
+  if (!file.startsWith(WEB_DIR + path.sep) || !STATIC_TYPES[path.extname(file)]) return null;
+  return fs.existsSync(file) && fs.statSync(file).isFile() ? file : null;
+}
+
+function serveStatic(res, file) {
+  res.writeHead(200, { 'Content-Type': STATIC_TYPES[path.extname(file)], 'Cache-Control': 'no-cache' });
+  fs.createReadStream(file).pipe(res);
 }
 
 async function handle(ctx, req, res) {
@@ -73,8 +85,10 @@ async function handle(ctx, req, res) {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
-  if (req.method === 'GET' && STATIC_FILES[url.pathname]) {
-    serveStatic(res, url.pathname);
+  if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+    const file = staticFile(url.pathname);
+    if (file) serveStatic(res, file);
+    else res.writeHead(404).end('Not found');
     return;
   }
 

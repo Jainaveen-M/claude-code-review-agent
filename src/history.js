@@ -22,11 +22,11 @@ export function reportBasePath(meta) {
   const stem = `review-${slug(meta.source)}-into-${slug(meta.dest)}-${date}`;
   for (let n = 1; ; n += 1) {
     const base = path.join(dir, n === 1 ? stem : `${stem}-${n}`);
-    if (!fs.existsSync(`${base}.pdf`) && !fs.existsSync(`${base}.json`)) return base;
+    if (!['.pdf', '.json', '.diff'].some((ext) => fs.existsSync(`${base}${ext}`))) return base;
   }
 }
 
-export function entryFromReport(report, { id = crypto.randomUUID(), pdfPath, jsonPath }) {
+export function entryFromReport(report, { id = crypto.randomUUID(), pdfPath, jsonPath, diffPath = null }) {
   const { meta } = report;
   return {
     id,
@@ -45,6 +45,7 @@ export function entryFromReport(report, { id = crypto.randomUUID(), pdfPath, jso
     durationMs: meta.durationMs ?? null,
     pdfPath,
     jsonPath,
+    diffPath,
   };
 }
 
@@ -76,10 +77,12 @@ export function rebuildIndex() {
         try {
           const report = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
           if (!report?.meta?.createdAt) continue;
+          const diffPath = jsonPath.replace(/\.json$/, '.diff');
           entries.push(entryFromReport(report, {
             id: report.meta.historyId ?? crypto.randomUUID(),
             jsonPath,
             pdfPath: jsonPath.replace(/\.json$/, '.pdf'),
+            diffPath: fs.existsSync(diffPath) ? diffPath : null,
           }));
         } catch {
           // not one of ours
@@ -125,7 +128,7 @@ export function deleteEntry(id) {
   const entries = readIndex();
   const entry = entries.find((e) => e.id === id);
   if (!entry) return false;
-  for (const file of [entry.pdfPath, entry.jsonPath]) fs.rmSync(file, { force: true });
+  for (const file of [entry.pdfPath, entry.jsonPath, entry.diffPath]) if (file) fs.rmSync(file, { force: true });
   writeIndex(entries.filter((e) => e.id !== id));
   return true;
 }
